@@ -35,7 +35,7 @@ export default function CoaPage() {
                 {/* HEADER */}
                 <div className="flex items-center justify-between mb-6">
                     <h1 className="text-2xl font-semibold text-gray-800">
-                        Daftar Akun
+                        Diagram Akun (COA)
                     </h1>
 
                     <button

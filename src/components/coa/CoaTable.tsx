@@ -25,12 +25,12 @@ export default function CoaTable({ data }: Props) {
         <table className="w-full text-sm">
             <thead className="text-left bg-gray-100">
                 <tr>
-                    <th className="p-2">Code</th>
-                    <th className="p-2">Name</th>
-                    <th className="p-2">Type</th>
-                    <th className="p-2">Normal</th>
-                    <th className="p-2">Group</th>
-                    <th className="p-2">Active</th>
+                    <th className="p-2">Kode Akun</th>
+                    <th className="p-2">Nama Akun</th>
+                    <th className="p-2">Tipe Akun</th>
+                    <th className="p-2">Akun Normal</th>
+                    <th className="p-2">Kelompok Akun</th>
+                    <th className="p-2">Aktif?</th>
                 </tr>
             </thead>
 
@@ -46,7 +46,7 @@ export default function CoaTable({ data }: Props) {
                         <td className="p-2">{item.normal_account}</td>
                         <td className="p-2">{item.account_group_name}</td>
                         <td className="p-2">
-                            {item.is_active ? "YA" : "TIDAK"}
+                            {item.is_active ? "YES" : "NO"}
                         </td>
                     </tr>
                 ))}
