@@ -72,6 +72,8 @@ fn main() {
             set_coa_active,
             create_journal,
             post_journal,
+            list_all,
+            get_by_id,
             register,
             login,
             logout,

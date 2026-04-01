@@ -2,6 +2,7 @@ use sqlx::SqlitePool;
 use std::path::PathBuf;
 
 pub async fn init_pool(db_path: PathBuf) -> Result<SqlitePool, sqlx::Error> {
+    
     let db_url = format!("sqlite://{}", db_path.display());
 
     let pool = SqlitePool::connect(&db_url).await?;
@@ -107,7 +108,9 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
         CREATE TABLE IF NOT EXISTS journal (
             id TEXT PRIMARY KEY,
             date TEXT NOT NULL,
-            description TEXT
+            description TEXT,
+            status TEXT NOT NULL CHECK(status IN ('Draft','Posted')),
+            is_active INTEGER DEFAULT 1
         );
         "#
     )

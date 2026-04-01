@@ -7,4 +7,4 @@ pub mod journal;
 
 pub use auth::*;
 pub use coa::*;
-// pub use journal::*;
+pub use journal::*;

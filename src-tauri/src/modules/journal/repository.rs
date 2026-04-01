@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use sqlx::{SqlitePool, Transaction, Sqlite, Row};
 
 use crate::modules::journal::model::{Journal, JournalLine, JournalStatus};
@@ -7,7 +8,6 @@ pub struct JournalRepo {
 }
 
 impl JournalRepo {
-    
     pub fn new(pool: SqlitePool) -> Self {
         Self { pool }
     }
@@ -16,6 +16,16 @@ impl JournalRepo {
         self.pool.begin().await
     }
 
+    fn map_status(status: &str) -> JournalStatus {
+        match status {
+            "POSTED" => JournalStatus::Posted,
+            _ => JournalStatus::Draft,
+        }
+    }
+
+    // =========================
+    // INSERT
+    // =========================
     pub async fn insert_journal(
         &self,
         tx: &mut Transaction<'_, Sqlite>,
@@ -29,8 +39,8 @@ impl JournalRepo {
         .bind(&journal.date)
         .bind(&journal.description)
         .bind(match journal.status {
-            crate::modules::journal::model::JournalStatus::Draft => "DRAFT",
-            crate::modules::journal::model::JournalStatus::Posted => "POSTED",
+            JournalStatus::Draft => "DRAFT",
+            JournalStatus::Posted => "POSTED",
         })
         .execute(&mut **tx)
         .await?;
@@ -60,26 +70,76 @@ impl JournalRepo {
         Ok(())
     }
 
-    pub async fn get_journal_with_lines(
+    // =========================
+    // READ (NO TX)
+    // =========================
+    pub async fn get_all_journals_with_lines(
         &self,
-        tx: &mut Transaction<'_, Sqlite>,
+    ) -> Result<Vec<Journal>, sqlx::Error> {
+        let headers = sqlx::query(
+            "SELECT id, date, description, status FROM journal ORDER BY date DESC"
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        let rows = sqlx::query(
+            "SELECT id, journal_id, account_id, debit, credit FROM journal_line"
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut lines_map: HashMap<String, Vec<JournalLine>> = HashMap::new();
+
+        for row in rows {
+            let line = JournalLine {
+                id: row.get("id"),
+                journal_id: row.get("journal_id"),
+                account_id: row.get("account_id"),
+                debit: row.get("debit"),
+                credit: row.get("credit"),
+            };
+
+            lines_map
+                .entry(line.journal_id.clone())
+                .or_default()
+                .push(line);
+        }
+
+        let mut journals = Vec::new();
+
+        for h in headers {
+            let id: String = h.get("id");
+
+            journals.push(Journal {
+                id: id.clone(),
+                date: h.get("date"),
+                description: h.get("description"),
+                status: Self::map_status(&h.get::<String, _>("status")),
+                lines: lines_map.remove(&id).unwrap_or_default(),
+            });
+        }
+
+        Ok(journals)
+    }
+
+    pub async fn get_journal_with_lines_by_id(
+        &self,
         journal_id: &str,
     ) -> Result<Journal, sqlx::Error> {
-
         let header = sqlx::query(
             "SELECT id, date, description, status FROM journal WHERE id = ?"
         )
-            .bind(journal_id)
-            .fetch_one(&mut **tx)
-            .await?;
+        .bind(journal_id)
+        .fetch_one(&self.pool)
+        .await?;
 
         let rows = sqlx::query(
             "SELECT id, journal_id, account_id, debit, credit
-            FROM journal_line WHERE journal_id = ?"
+             FROM journal_line WHERE journal_id = ?"
         )
-            .bind(journal_id)
-            .fetch_all(&mut **tx)
-            .await?;
+        .bind(journal_id)
+        .fetch_all(&self.pool)
+        .await?;
 
         let lines = rows.into_iter().map(|row| JournalLine {
             id: row.get("id"),
@@ -93,23 +153,23 @@ impl JournalRepo {
             id: header.get("id"),
             date: header.get("date"),
             description: header.get("description"),
-            status: match header.get::<String, _>("status").as_str() {
-                "POSTED" => JournalStatus::Posted,
-                _ => JournalStatus::Draft,
-            },
+            status: Self::map_status(&header.get::<String, _>("status")),
             lines,
         })
     }
 
+    // =========================
+    // POSTING
+    // =========================
     pub async fn insert_ledger_entries(
         &self,
-        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        tx: &mut Transaction<'_, Sqlite>,
         journal: &Journal,
     ) -> Result<(), sqlx::Error> {
         for line in &journal.lines {
             sqlx::query(
                 "INSERT INTO ledger (id, journal_id, account_id, debit, credit, date)
-                VALUES (?, ?, ?, ?, ?, ?)"
+                 VALUES (?, ?, ?, ?, ?, ?)"
             )
             .bind(uuid::Uuid::new_v4().to_string())
             .bind(&journal.id)
@@ -126,17 +186,15 @@ impl JournalRepo {
 
     pub async fn update_status(
         &self,
-        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        tx: &mut Transaction<'_, Sqlite>,
         journal_id: &str,
         status: &str,
     ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "UPDATE journal SET status = ? WHERE id = ?"
-        )
-        .bind(status)
-        .bind(journal_id)
-        .execute(&mut **tx)
-        .await?;
+        sqlx::query("UPDATE journal SET status = ? WHERE id = ?")
+            .bind(status)
+            .bind(journal_id)
+            .execute(&mut **tx)
+            .await?;
 
         Ok(())
     }

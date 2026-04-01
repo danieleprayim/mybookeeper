@@ -101,7 +101,7 @@ const Landing = () => {
 
             {/* ===== Footer ===== */}
             <footer className="h-10 flex items-center justify-center text-xs text-gray-400">
-                © 2026 MyBooKeeper. All rights reserved.
+                © 2026 MyBooKeeper by danzbrito. All rights reserved.
             </footer>
         </div>
     );

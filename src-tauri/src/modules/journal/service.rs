@@ -6,6 +6,8 @@ use crate::modules::journal::{
     repository::JournalRepo,
 };
 
+use crate::shared::error::AppError;
+
 pub struct JournalService {
     repo: JournalRepo,
 }
@@ -15,8 +17,7 @@ impl JournalService {
         Self { repo }
     }
 
-    pub async fn create_journal(&self, dto: CreateJournalDTO) -> Result<(), String> {
-        //  DTO → MODEL
+    pub async fn create_journal(&self, dto: CreateJournalDTO) -> Result<(), AppError> {
         let lines: Vec<JournalLine> = dto.lines.into_iter().map(|l| JournalLine {
             id: Uuid::new_v4().to_string(),
             journal_id: dto.journal_id.clone(),
@@ -33,53 +34,52 @@ impl JournalService {
             lines,
         };
 
-        // DOMAIN VALIDATION
         journal.validate()?;
 
-        // TRANSACTION
-        let mut tx = self.repo.begin_tx().await.map_err(|e| e.to_string())?;
+        let mut tx = self.repo.begin_tx().await.map_err(|e| AppError::DatabaseError(e.to_string()))?;
 
-        self.repo
-            .insert_journal(&mut tx, &journal)
-            .await
-            .map_err(|e| e.to_string())?;
+        self.repo.insert_journal(&mut tx, &journal).await.map_err(|e| AppError::DatabaseError(e.to_string()))?;
+        self.repo.insert_lines(&mut tx, &journal.lines).await.map_err(|e| AppError::DatabaseError(e.to_string()))?;
 
-        self.repo
-            .insert_lines(&mut tx, &journal.lines)
-            .await
-            .map_err(|e| e.to_string())?;
-
-        tx.commit().await.map_err(|e| e.to_string())?;
+        tx.commit().await.map_err(|e| AppError::DatabaseError(e.to_string()))?;
 
         Ok(())
     }
 
-    pub async fn post_journal(&self, journal_id: String) -> Result<(), String> {
-        let mut tx = self.repo.begin_tx().await.map_err(|e| e.to_string())?;
-
-        // 1. Load journal
-        let journal = self.repo
-            .get_journal_with_lines(&mut tx, &journal_id)
+    pub async fn list_all(&self) -> Result<Vec<Journal>, AppError> {
+        let result = self.repo
+            .get_all_journals_with_lines()
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| AppError::DatabaseError(e.to_string()))?;
 
-        // 2. Domain validations
+        Ok(result)
+    }
+
+    pub async fn get_by_id(&self, journal_id: String) -> Result<Journal, AppError> {
+        let result = self.repo
+            .get_journal_with_lines_by_id(&journal_id)
+            .await
+            .map_err(|e| AppError::DatabaseError(e.to_string()))?;
+        
+        Ok(result)
+    }
+
+    pub async fn post_journal(&self, journal_id: String) -> Result<(), AppError> {
+        let mut tx = self.repo.begin_tx().await.map_err(|e| AppError::DatabaseError(e.to_string()))?;
+
+        let journal = self
+            .repo
+            .get_journal_with_lines_by_id(&journal_id)
+            .await
+            .map_err(|e| AppError::DatabaseError(e.to_string()))?;
+
         journal.validate()?;
         journal.ensure_not_posted()?;
 
-        // 3. Insert ledger
-        self.repo
-            .insert_ledger_entries(&mut tx, &journal)
-            .await
-            .map_err(|e| e.to_string())?;
+        self.repo.insert_ledger_entries(&mut tx, &journal).await.map_err(|e| AppError::DatabaseError(e.to_string()))?;
+        self.repo.update_status(&mut tx, &journal.id, "POSTED").await.map_err(|e| AppError::DatabaseError(e.to_string()))?;
 
-        // 4. Update status
-        self.repo
-            .update_status(&mut tx, &journal.id, "POSTED")
-            .await
-            .map_err(|e| e.to_string())?;
-
-        tx.commit().await.map_err(|e| e.to_string())?;
+        tx.commit().await.map_err(|e| AppError::DatabaseError(e.to_string()))?;
 
         Ok(())
     }
