@@ -23,6 +23,7 @@ use crate::modules::journal::{
 };
 
 fn main() {
+    env_logger::init();
     tauri::Builder::default()
         .setup(|app| {
             let app_handle = app.handle();
@@ -36,7 +37,9 @@ fn main() {
             std::fs::create_dir_all(&app_dir)
                 .expect("Failed to create app dir");
 
-            let db_path = app_dir.join("accounting.db");
+            // let db_path = app_dir.join("accounting.db");
+            let db_path = std::path::PathBuf::from("accounting.db");
+            log::info!("📦 Using SQLite DB at: {}", db_path.display());
 
             if !db_path.exists() {
                 std::fs::File::create(&db_path)
@@ -82,4 +85,5 @@ fn main() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri");
+    log::info!("🚀 Starting application... with db");
 }
